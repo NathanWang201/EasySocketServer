@@ -2,46 +2,66 @@ import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.*;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
+ * EasyServer is a class that controls the thread pool and all ports.For a single port,the inner class server will perform its function.
  * Created by Nathan on 2015/1/7.
  */
-public class CoreServer {
+public class EasyServer {
 
-	private static int threadsPerCore;//number of threads distributed to each CPU core
-	private static CoreServer coreServer = null;
+	private int threadsPoolSize;//number of threads distributed to each CPU core
+	private static EasyServer easyServer = null;
 	private ExecutorService executorService; //thread pool
-	private Handler handler;//handler class
-	private Map<String,Server> portMap = new HashMap<String, Server>();
+	private Map<String,Server> portMap = new HashMap<String, Server>();//stores registered ports and corresponding server instances
 
-	private CoreServer(){
+	private EasyServer(){
 		//Assure default constructor cannot be accessed publicly
 	}
 
-	//singleton
-	public CoreServer getInstance(){
-		if(coreServer == null){
-			coreServer = new CoreServer();
+	public static synchronized void initialize(){
+		if(easyServer == null){
+			easyServer = new EasyServer();
 		}
-		return coreServer;
 	}
 
-	public CoreServer setUp(int fixedNum,int threadsPerCore) throws Exception {
-		this.threadsPerCore = threadsPerCore;
+	//singleton
+	public static EasyServer getInstance(){
+		if(easyServer == null){
+			initialize();
+		}
+		return easyServer;
+	}
+
+	/**
+	 * set up the thread pool size
+	 * @param fixedNum
+	 * @param threadsPerCore
+	 * @return
+	 * @throws Exception
+	 */
+	public EasyServer setUpPool(int fixedNum,int threadsPerCore) throws Exception {
 		if(fixedNum > 0){
 			executorService = Executors.newFixedThreadPool(fixedNum);
+			threadsPoolSize = fixedNum;
 		}else if(threadsPerCore > 0){
 			executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() * threadsPerCore);
+			threadsPoolSize = Runtime.getRuntime().availableProcessors() * threadsPerCore;
 		}else{
 			throw new Exception("Wrong thread number!");
 		}
-		return coreServer;
+		return easyServer;
 	}
 
-	public CoreServer addPort(int port,Handler handler) throws Exception {
+	/**
+	 * add a port to the map,this will not start listening
+	 * @param port
+	 * @param handler
+	 * @return
+	 * @throws Exception
+	 */
+	public EasyServer addPort(int port,Handler handler) throws Exception {
 		Server server = new Server(port);
 		server.setHandler(handler);
 		if(portMap.containsKey(port+"")){
@@ -49,20 +69,31 @@ public class CoreServer {
 		}else{
 			portMap.put(port+"",server);
 		}
-		return coreServer;
+		return easyServer;
 	}
 
-	public CoreServer removePort(int port) throws Exception {
+	/**
+	 * remove a port
+	 * @param port
+	 * @return
+	 * @throws Exception
+	 */
+	public EasyServer removePort(int port) throws Exception {
 		Server server = portMap.get(port+"");
 		if(server == null){
 			portMap.remove(port+"");
 		}else{
 			throw new Exception("Port<" + port + "> in use!");
 		}
-		return coreServer;
+		return easyServer;
 	}
 
-	public CoreServer startAll() throws Exception {
+	/**
+	 * start listening on all ports
+	 * @return
+	 * @throws Exception
+	 */
+	public EasyServer startAll() throws Exception {
 		Iterator iterator = portMap.entrySet().iterator();
 		while(iterator.hasNext()){
 			Map.Entry entry = (Map.Entry)iterator.next();
@@ -70,17 +101,27 @@ public class CoreServer {
 			Server server = (Server)entry.getValue();
 			server.start();
 		}
-		return coreServer;
+		return easyServer;
 	}
 
-	public CoreServer start(String port) throws Exception {
+	/**
+	 * start listening on specific port
+	 * @param port
+	 * @return
+	 * @throws Exception
+	 */
+	public EasyServer start(String port) throws Exception {
 		Server server = portMap.get(port+"");
 		if(server.getServerSocket().isClosed()){
 			server.start();
 		}
-		return coreServer;
+		return easyServer;
 	}
 
+	/**
+	 * stop listening on all ports
+	 * @throws IOException
+	 */
 	public void stopAll() throws IOException {
 		Iterator iterator = portMap.entrySet().iterator();
 		while(iterator.hasNext()){
@@ -91,6 +132,11 @@ public class CoreServer {
 		}
 	}
 
+	/**
+	 * stop listening on specific port
+	 * @param port
+	 * @throws IOException
+	 */
 	public void stop(String port) throws IOException {
 		if(portMap.containsKey(port)){
 			portMap.get(port).stop();
@@ -99,7 +145,23 @@ public class CoreServer {
 		}
 	}
 
-	class Server{
+	public Map<String, String> showStatus()throws Exception{
+		Map<String,String> map = new HashMap<String, String>();
+		Iterator iterator = portMap.entrySet().iterator();
+		while(iterator.hasNext()){
+			Map.Entry entry = (Map.Entry)iterator.next();
+			String port = (String)entry.getKey();
+			Server server = (Server)entry.getValue();
+			if(server!=null){
+				map.put(port,"Open");
+			}else {
+				map.put(port,"Closed");
+			}
+		}
+		return map;
+	}
+
+	private class Server{
 		private int port;//list of port number
 		private Handler handler;//Handler on this port
 		private ServerSocket serverSocket; //socket server class
@@ -109,17 +171,17 @@ public class CoreServer {
 			this.port = port;
 		}
 
-
 		public void start() throws Exception {
 			try {
-				if(!serverSocket.isClosed()){
+				if(serverSocket!=null){
 					throw new Exception("Already started!");
 				}
 				serverSocket = new ServerSocket(port);
 				thread = new Thread(){
 					@Override
 					public void run(){
-						OutputStreamWriter writer = null;
+						System.out.println("Port<" + port + "> is listening.");
+
 						Socket socket = null;
 						BufferedReader reader = null;
 						try{
@@ -132,9 +194,7 @@ public class CoreServer {
 								reader.read(cbuf);
 								requestContent = String.valueOf(cbuf).trim();
 								//handle request
-								String responseContent = handler.handle(requestContent,socket);
-								writer.write(responseContent);
-								writer.flush();
+								executorService.execute(new ExecutionThread(requestContent,socket,handler));
 							}
 						}catch (Exception e){
 							e.printStackTrace();
@@ -151,11 +211,6 @@ public class CoreServer {
 								e.printStackTrace();
 							}
 							try {
-								writer.close();
-							} catch (IOException e) {
-								e.printStackTrace();
-							}
-							try {
 								socket.close();
 							} catch (IOException e) {
 								e.printStackTrace();
@@ -163,7 +218,7 @@ public class CoreServer {
 						}
 					}
 				};
-				thread.run();
+				thread.start();
 			} catch (IOException e) {
 				e.printStackTrace();
 				throw e;

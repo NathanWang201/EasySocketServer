@@ -9,7 +9,7 @@ import org.junit.After;
 * @since <pre>Ò»ÔÂ 7, 2015</pre> 
 * @version 1.0 
 */ 
-public class CoreServerTest { 
+public class EasyServerTest {
 
 @Before
 public void before() throws Exception { 
