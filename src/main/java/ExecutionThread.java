@@ -1,3 +1,4 @@
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.net.Socket;
@@ -22,7 +23,7 @@ public class ExecutionThread implements Runnable{
 		OutputStreamWriter writer = null;
 		try {
 			String responseContent = handler.handle(request,socket);
-			writer = new OutputStreamWriter(socket.getOutputStream());
+			writer = new OutputStreamWriter(socket.getOutputStream(),BlockingModeServer.getCharSet());
 			writer.write(responseContent);
 			writer.flush();
 		} catch (IOException e) {
@@ -33,6 +34,13 @@ public class ExecutionThread implements Runnable{
 				}
 			} catch (IOException e1) {
 				e1.printStackTrace();
+			}
+		}
+		finally {
+			try {
+				socket.close();
+			} catch (IOException e) {
+				e.printStackTrace();
 			}
 		}
 	}

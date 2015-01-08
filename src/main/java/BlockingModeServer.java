@@ -1,6 +1,7 @@
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -11,6 +12,7 @@ import java.util.concurrent.Executors;
  */
 public class BlockingModeServer {
 
+	private static String charSet;//charset to be used in IO operation
 	private int threadsPoolSize;//number of threads distributed to each CPU core
 	private static BlockingModeServer blockingModeServer = null;
 	private ExecutorService executorService; //thread pool
@@ -41,7 +43,12 @@ public class BlockingModeServer {
 	 * @return
 	 * @throws Exception
 	 */
-	public BlockingModeServer setUpPool(int fixedNum,int threadsPerCore) throws Exception {
+	public BlockingModeServer setUpPool(int fixedNum,int threadsPerCore,String charset) throws Exception {
+		if("".equals(charset)){
+			this.charSet = Charset.defaultCharset().toString();
+		}else{
+			this.charSet = charset;
+		}
 		if(fixedNum > 0){
 			executorService = Executors.newFixedThreadPool(fixedNum);
 			threadsPoolSize = fixedNum;
@@ -161,6 +168,13 @@ public class BlockingModeServer {
 		return map;
 	}
 
+	public Map<String, String> getAttributes(){
+		Map<String,String> map = new HashMap<String, String>();
+		map.put("ThreadPoolSize",threadsPoolSize+"");
+		map.put("Charset",charSet);
+		return map;
+	}
+
 	private class Server{
 		private int port;//list of port number
 		private Handler handler;//Handler on this port
@@ -184,36 +198,29 @@ public class BlockingModeServer {
 
 						Socket socket = null;
 						BufferedReader reader = null;
-						try{
-							while(true){
+						while(true){
+							try{
+
 								socket = serverSocket.accept();
 								InputStream in = socket.getInputStream();
-								reader = new BufferedReader(new InputStreamReader(in));
+								reader = new BufferedReader(new InputStreamReader(in, charSet));
 								String requestContent = "";
-								char[] cbuf = new char[10000];
+								char[] cbuf = new char[1000];
 								reader.read(cbuf);
 								requestContent = String.valueOf(cbuf).trim();
 								//handle request
 								executorService.execute(new ExecutionThread(requestContent,socket,handler));
-							}
-						}catch (Exception e){
-							e.printStackTrace();
-							try {
-								throw e;
-							} catch (Exception e1) {
-								e1.printStackTrace();
-							}
-						}
-						finally {
-							try {
-								reader.close();
-							} catch (IOException e) {
+
+							}catch (Exception e){
 								e.printStackTrace();
+								try {
+									throw e;
+								} catch (Exception e1) {
+									e1.printStackTrace();
+								}
 							}
-							try {
-								socket.close();
-							} catch (IOException e) {
-								e.printStackTrace();
+							finally {
+
 							}
 						}
 					}
@@ -252,5 +259,9 @@ public class BlockingModeServer {
 		public void setServerSocket(ServerSocket serverSocket) {
 			this.serverSocket = serverSocket;
 		}
+	}
+
+	public static String getCharSet(){
+		return charSet;
 	}
 }
